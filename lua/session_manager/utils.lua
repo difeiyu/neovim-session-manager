@@ -36,16 +36,48 @@ function utils.get_last_session_filename()
 
   local most_recent_filename = nil
   local most_recent_timestamp = 0
+  local cwd = Path:new(vim.loop.cwd()) -- 这里取的cwd是启动的环境，加载的session 有自己的环境
+  local sessionname = vim.api.nvim_get_var("SessionName")
+  cwd.session_name = sessionname
+  -- z这里不能取当前文件夹，毕竟不一定有session 还多执行一次 dir_to_session_filename 谁知道用户做了什么
+  local now_session_filename = config.dir_to_session_filename(cwd).filename
   for _, session_filename in ipairs(scandir.scan_dir(tostring(config.sessions_dir))) do
     if config.session_filename_to_dir(session_filename):is_dir() then
       local timestamp = vim.fn.getftime(session_filename)
-      if most_recent_timestamp < timestamp then
+      if most_recent_timestamp < timestamp and now_session_filename ~= session_filename then
         most_recent_timestamp = timestamp
         most_recent_filename = session_filename
       end
     end
   end
   return most_recent_filename
+end
+
+function utils.new_session(discard_current)
+  if not discard_current then
+    -- Ask to save files in current session before closing them.
+    for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_get_option(buffer, 'modified') then
+        local choice = vim.fn.confirm('The files in the current session have changed. Save changes?',
+          '&Yes\n&No\n&Cancel')
+        if choice == 3 or choice == 0 then
+          return -- Cancel.
+        elseif choice == 1 then
+          vim.api.nvim_command('silent wall')
+        end
+        break
+      end
+    end
+  end
+
+  local current_buffer = vim.api.nvim_get_current_buf()
+  for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buffer) and buffer ~= current_buffer then
+      vim.api.nvim_buf_delete(buffer, { force = true })
+    end
+  end
+  vim.api.nvim_buf_delete(current_buffer, { force = true })
+  vim.api.nvim_set_var("SessionName", '')
 end
 
 ---@param filename string
@@ -81,6 +113,9 @@ function utils.load_session(filename, discard_current)
     vim.o.swapfile = false
     utils.is_session = true
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPre' })
+    local sessionname = Path:new(filename)
+    sessionname = table.remove(sessionname:_split())
+    vim.api.nvim_set_var('SessionName', sessionname)
     vim.api.nvim_command('silent source ' .. filename)
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPost' })
     close_unused_lsp_clients()
@@ -108,6 +143,13 @@ function utils.save_session(filename)
   end
 
   utils.is_session = true
+  local pfilename = Path:new(filename)
+  pfilename = pfilename:_split()
+  table.remove(pfilename)
+  local parent = Path:new(pfilename)
+  if not parent:exists() then
+    parent:mkdir({ parents = true })
+  end
   vim.api.nvim_exec_autocmds('User', { pattern = 'SessionSavePre' })
   vim.api.nvim_command('mksession! ' .. filename)
   vim.api.nvim_exec_autocmds('User', { pattern = 'SessionSavePost' })
@@ -166,8 +208,8 @@ function utils.is_restorable(buffer)
   end
 
   if
-    vim.tbl_contains(config.autosave_ignore_filetypes, vim.api.nvim_buf_get_option(buffer, 'filetype'))
-    or vim.tbl_contains(config.autosave_ignore_buftypes, vim.api.nvim_buf_get_option(buffer, 'buftype'))
+      vim.tbl_contains(config.autosave_ignore_filetypes, vim.api.nvim_buf_get_option(buffer, 'filetype'))
+      or vim.tbl_contains(config.autosave_ignore_buftypes, vim.api.nvim_buf_get_option(buffer, 'buftype'))
   then
     return false
   end
@@ -212,8 +254,7 @@ function utils.shorten_path(path)
 
     return shortened
   end
-
-  return path.filename
+  return path.session_name
 end
 
 return utils

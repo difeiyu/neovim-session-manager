@@ -2,7 +2,7 @@ if not vim.fn.has('nvim-0.7.0') then
   require('session_manager.utils').notify('Neovim 0.7+ is required for session manager plugin', vim.log.levels.ERROR)
   return
 end
-
+vim.api.nvim_set_var("SessionName", "")
 local subcommands = require('session_manager.subcommands')
 local session_manager = require('session_manager')
 
@@ -14,7 +14,7 @@ vim.api.nvim_create_autocmd({ 'VimEnter' }, {
   nested = true,
   callback = session_manager.autoload_session,
 })
-vim.api.nvim_create_autocmd({ 'VimLeavePre' }, {
+vim.api.nvim_create_autocmd({ 'VimLeavepre' }, {
   group = session_manager_group,
   callback = session_manager.autosave_session,
 })
