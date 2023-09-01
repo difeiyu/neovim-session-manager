@@ -6,7 +6,17 @@ local session_manager = {}
 
 --- Apply user settings.
 ---@param values table
-function session_manager.setup(values) setmetatable(config, { __index = vim.tbl_extend('force', config.defaults, values) }) end
+function session_manager.setup(values)
+  setmetatable(config, { __index = vim.tbl_extend('force', config.defaults, values) })
+
+  vim.api.nvim_set_var("SessionName", "")
+  config.session_filename_to_dir = function(cwd)
+    return utils.split_sessionname(config.defaults.session_filename_to_dir(cwd))
+  end
+  config.dir_to_session_filename = function(cwd)
+    return utils.addsessionname(config.defaults.dir_to_session_filename(cwd))
+  end
+end
 
 --- Selects a session a loads it.
 ---@param discard_current boolean: If `true`, do not check for unsaved buffers.
@@ -28,8 +38,7 @@ end
 function session_manager.load_last_session(discard_current)
   local last_session = utils.get_last_session_filename()
   if last_session then
-    local sessionname = vim.api.nvim_get_var("SessionName")
-    if sessionname and sessionname~='' then
+    if vim.api.nvim_get_var("SessionName") ~= '' then
       session_manager.autosave_session()
     end
     utils.load_session(last_session, discard_current)
@@ -41,50 +50,10 @@ function session_manager.new_session(discard_current)
   utils.new_session(discard_current)
 end
 
---- Loads a session for the current working directory.
-function session_manager.load_current_dir_session(discard_current)
-  local cwd = vim.loop.cwd()
-  if cwd then
-    local session = config.dir_to_session_filename(cwd)
-    if session:exists() then
-      utils.load_session(session.filename, discard_current)
-    end
-  end
-end
-
 --- Saves a session for the current working directory.
 function session_manager.save_current_session()
   local cwd = vim.loop.cwd()
   if cwd then
-    cwd = Path:new(cwd)
-    local ins=''
-    local Golbalsession = vim.api.nvim_get_var("SessionName")
-    if Golbalsession =='' or Golbalsession ==nil then
-      vim.ui.input({prompt="Enter name for Session: "}, function(input)
-        ins = ins..input
-      end)
-      cwd.session_name = ins
-      vim.api.nvim_set_var("SessionName", ins)
-      local existsfile = io.open(config.dir_to_session_filename(cwd).filename, 'rb')
-      local confirm = ''
-      if existsfile then
-        vim.ui.input({prompt="\""..ins.."\" already exists\n!confirm to replace input(y):"}, function(input)
-          if input then
-            confirm = confirm..input
-          end
-        end)
-        if confirm ~='y' then
-          cwd.session_name = nil
-          vim.api.nvim_set_var("SessionName", ins)
-        end
-        existsfile:close()
-      end
-    else
-      cwd.session_name = Golbalsession
-    end
-    if cwd.session_name == '' then
-      cwd.session_name=nil
-    end
     utils.save_session(config.dir_to_session_filename(cwd).filename)
   end
 end
@@ -107,7 +76,13 @@ function session_manager.delete_session()
     format_item = function(item) return utils.shorten_path(item.dir) end,
   }, function(item)
     if item then
-      Path:new(item.filename):rm()
+      local sessionfile = Path:new(item.filename)
+      local shadafile = Path:new(item.filename):_split()
+      table.remove(shadafile, #shadafile-2)
+      table.insert(shadafile, #shadafile-1, 'shada')
+      shadafile = Path:new(shadafile)
+      sessionfile:rm()
+      shadafile:rm()
       local cwd = vim.loop.cwd()
       if utils.is_session and cwd and item.filename == config.dir_to_session_filename(cwd).filename then
         utils.is_session = false

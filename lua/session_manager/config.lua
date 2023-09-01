@@ -1,8 +1,8 @@
 local Path = require('plenary.path')
 local Enum = require('plenary.enum')
 
-local path_replacer = '__'
-local colon_replacer = '++'
+local colon_replacer = 'ྠ'
+local path_replacer = 'ྡ'
 
 local config = {
   AutoloadMode = Enum({
